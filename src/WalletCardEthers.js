@@ -17,7 +17,7 @@ const WalletCardEthers = () => {
 
 	const chainId = ChainId.RINKEBY;
 	const DAIAddress = '0xc7AD46e0b8a400Bb3C915120d284AafbA8fc4735';
-	const routerContractAddress = '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45';
+	const routerContractAddress = '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D';
 	const uniswapRouterAbi = [
 		`function swapTokensForExactTokens(
 			uint amountOut,
@@ -25,7 +25,8 @@ const WalletCardEthers = () => {
 			address[] calldata path,
 			address to,
 			uint deadline
-		  ) external returns (uint[] memory amounts)`
+		  ) external returns (uint[] memory amounts)`,
+		'function getAmountsOut(uint amountIn, address[] memory path) public view returns (uint[] memory amounts)'
 	];
 	//const chainId = ChainId.MAINNET;
 	//const tokenAddress = '0x6B175474E89094C44Da98b954EedeAC495271d0F';
@@ -47,7 +48,7 @@ const WalletCardEthers = () => {
 			  console.error(err);
 			}
 		  });
-	
+
 		const web3Provider = new ethers.providers.Web3Provider(provider);
 
 		async function handleAccountsChanged(accounts) {
@@ -69,8 +70,14 @@ const WalletCardEthers = () => {
 		  }
 
 	}
-	
+
 	const getData = async (ethProvider, signerAddress) =>{
+
+		const provider = await detectEthereumProvider();
+		const web3Provider = new ethers.providers.Web3Provider(provider);
+		const uniswapRouter = new ethers.Contract(routerContractAddress, uniswapRouterAbi, web3Provider.getSigner());
+
+		const amountIn = ethers.utils.parseUnits('100000000000000', 'ether');
 
 		const DAI = await Fetcher.fetchTokenData(chainId, DAIAddress);
 		const WETH_DAI = await Fetcher.fetchPairData(DAI, WETH[DAI.chainId]);
@@ -78,29 +85,29 @@ const WalletCardEthers = () => {
 		setmidprice(WETH_TO_DAI.midPrice.toSignificant(6));
 		setmidpriceinv(WETH_TO_DAI.midPrice.invert().toSignificant(6));
 
-		const trade = new Trade(WETH_TO_DAI, new TokenAmount(WETH[DAI.chainId], '100000000000000'), TradeType.EXACT_INPUT);
+		const trade = new Trade(WETH_TO_DAI, new TokenAmount(WETH[DAI.chainId], amountIn), TradeType.EXACT_INPUT);
 		setexprice(trade.executionPrice.toSignificant(6));
 
-		const slippageTolerance = new Percent('50', '10000'); //50bips 1bip=0.001% (0.05%)
-		const amountOutMin = trade.minimumAmountOut(slippageTolerance).toExact();
-		const amountInMax = trade.inputAmount.toExact();
 		const path = [WETH[DAI.chainId].address, DAI.address];
+		const slippageTolerance = 5;
+		const amounts = await uniswapRouter.getAmountsOut(amountIn, path);
+
+		const amountOutMin = amounts[1].sub(amounts[1].div(slippageTolerance));
+
 		const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
 
-		const uniswapContract = new ethers.Contract(routerContractAddress, uniswapRouterAbi, ethProvider.getSigner());
-
-		const tx = await uniswapContract.swapTokensForExactTokens(
-			amountOutMin[0].toString(16),
-			amountInMax[0].toString(16),
+		const tx = await uniswapRouter.swapTokensForExactTokens(
+			amountOutMin.toHexString(),
+			amountIn.toHexString(),
 			path,
 			signerAddress,
 			deadline
 		);
-	
+
 	}
 
 
-	
+
 	return (
 		<div className='walletCard'>
 		<h4> MetaMask & Uniswap SDK demo </h4>
