@@ -17,7 +17,8 @@ const WalletCardEthers = () => {
 
 	const chainId = ChainId.RINKEBY;
 	const DAIAddress = '0xc7AD46e0b8a400Bb3C915120d284AafbA8fc4735';
-	const routerContractAddress = '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D';
+	const routerContractAddress = '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D';//'0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45';
+
 	const uniswapRouterAbi = [
 		`function swapTokensForExactTokens(
 			uint amountOut,
@@ -27,6 +28,10 @@ const WalletCardEthers = () => {
 			uint deadline
 		  ) external returns (uint[] memory amounts)`,
 		'function getAmountsOut(uint amountIn, address[] memory path) public view returns (uint[] memory amounts)'
+	];
+
+	const ierc20Abi = [
+		'function approve(address spender, uint amount) public returns(bool)',
 	];
 	//const chainId = ChainId.MAINNET;
 	//const tokenAddress = '0x6B175474E89094C44Da98b954EedeAC495271d0F';
@@ -74,14 +79,17 @@ const WalletCardEthers = () => {
 	const getData = async (ethProvider, signerAddress) =>{
 
 		const provider = await detectEthereumProvider();
-		const web3Provider = new ethers.providers.Web3Provider(provider);
+		const web3Provider = new ethers.providers.Web3Provider(provider, 'rinkeby');
 		const uniswapRouter = new ethers.Contract(routerContractAddress, uniswapRouterAbi, web3Provider.getSigner());
-
-		const amountIn = ethers.utils.parseUnits('100000000000000', 'ether');
 
 		const DAI = await Fetcher.fetchTokenData(chainId, DAIAddress);
 		const WETH_DAI = await Fetcher.fetchPairData(DAI, WETH[DAI.chainId]);
 		const WETH_TO_DAI = new Route([WETH_DAI], WETH[DAI.chainId]);
+
+		const originContract = new ethers.Contract(WETH[DAI.chainId].address, ierc20Abi, web3Provider.getSigner());
+
+		const amountIn = ethers.utils.parseUnits('0.005', 'ether');
+
 		setmidprice(WETH_TO_DAI.midPrice.toSignificant(6));
 		setmidpriceinv(WETH_TO_DAI.midPrice.invert().toSignificant(6));
 
@@ -96,13 +104,25 @@ const WalletCardEthers = () => {
 
 		const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
 
-		const tx = await uniswapRouter.swapTokensForExactTokens(
+		console.log('Before Approve');
+		const txAPPROVAL = await originContract.approve(routerContractAddress, amountIn);
+		console.log('After Approve');
+		const receiptAPPROVAL = await txAPPROVAL.wait();
+		console.log('Transaction receipt');
+		console.log(receiptAPPROVAL);
+		console.log('Run SWAP-TX');
+
+		const txSWAP = await uniswapRouter.swapTokensForExactTokens(
 			amountOutMin.toHexString(),
 			amountIn.toHexString(),
 			path,
 			signerAddress,
 			deadline
 		);
+
+		txSWAP.wait().then(() => {
+			console.log("i'm done")
+		});
 
 	}
 
